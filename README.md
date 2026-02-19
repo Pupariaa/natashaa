@@ -342,51 +342,100 @@ git clone https://github.com/pupariaa/natashaa.git
 cd natashaa
 ```
 
-Edit `mapping.txt` with your port forwards, then run:
+Copy and edit config, then edit `mapping.txt`:
 
 ```bash
-node index.js
+cp config.example.conf config.conf
+nano config.conf
+nano mapping.txt
 ```
+
+**iptables and ULOG require root.** You have two options:
+
+- **Quick test as your user:** run `node index.js`. The app will start but will log a warning and skip iptables/ULOG (TCP forwarding and API still work).
+- **Full features (iptables + ULOG):** run with `sudo node index.js`, or go to step 7 and use the systemd service (it runs as root).
 
 ### 7. Run as a Service
 
-Create the systemd unit:
+The service runs as **root** so that iptables and ULOG can be used. Create the systemd unit:
 
 ```bash
 sudo nano /etc/systemd/system/natashaa.service
 ```
 
-Content (adjust paths if needed):
+Content (adjust paths and env if needed):
 
 ```ini
 [Unit]
-Description=NATashaa TCP port forwarder
-After=network.target
+Description=NATashaa Port Forwarder
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/apps/natashaa
-ExecStart=/usr/bin/node /home/pi/apps/natashaa/index.js
+WorkingDirectory=/home/puparia/natashaa
+ExecStart=/usr/bin/node /home/puparia/natashaa/index.js
 Restart=always
-RestartSec=5
-Environment=API_KEY=your-secret-key
+RestartSec=3
+User=root
 Environment=NODE_ENV=production
+Environment=HOST_DIRECT_IP=10.0.200.50
 
 [Install]
 WantedBy=multi-user.target
 ```
 
+Set permissions and reload systemd:
+
+```bash
+sudo chmod 644 /etc/systemd/system/natashaa.service
+sudo systemctl daemon-reload
+```
+
 Enable and start:
 
 ```bash
-sudo systemctl daemon-reload
 sudo systemctl enable natashaa.service
 sudo systemctl start natashaa.service
 sudo systemctl status natashaa.service
 ```
 
 Logs: `journalctl -u natashaa.service -f`
+
+### Run commands at boot with root privileges
+
+The `natashaa.service` above is a systemd unit that runs at boot. To run any other command or script with root privileges at startup, use the same pattern:
+
+1. Create a unit file: `sudo nano /etc/systemd/system/myscript.service`
+2. Content (adjust paths and command):
+
+```ini
+[Unit]
+Description=My script at boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /home/puparia/scripts/mystartup.sh
+RemainAfterExit=yes
+User=root
+
+[Install]
+WantedBy=multi-user.target
+```
+
+3. Permissions and enable:
+
+```bash
+sudo chmod 644 /etc/systemd/system/myscript.service
+sudo systemctl daemon-reload
+sudo systemctl enable myscript.service
+```
+
+- `Type=oneshot` + `RemainAfterExit=yes`: for scripts that run once and exit.
+- `Type=simple` + `ExecStart=/path/to/binary`: for long-running processes (like NATashaa).
+- `User=root`: runs with full privileges (no sudo in the command).
 
 ---
 
