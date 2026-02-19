@@ -963,7 +963,15 @@ function main() {
     loadMappingFileOnce();
     rebuildServers();
     if (process.platform === "linux") {
-        rebuildIptablesRules();
+        try {
+            rebuildIptablesRules();
+        } catch (e) {
+            const msg = e.stderr ? String(e.stderr) : e.message;
+            const needRoot = /Permission denied|you must be root/i.test(msg);
+            logger.warn("SYSTEM", "iptables_skipped", needRoot ? "iptables requires root. Run with sudo or use the systemd service (User=root). Continuing without iptables/NFLOG." : "iptables failed, continuing without firewall integration.", {
+                error: msg.slice(0, 200)
+            });
+        }
     }
     watchMappingFile();
     createAPIServer();
